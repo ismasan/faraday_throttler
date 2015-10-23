@@ -11,7 +11,7 @@ describe FaradayThrottler::Cache do
       expect(subject.get('aaa')).to eql 'bbb'
     end
 
-    it 'returns data regardless of wit time' do
+    it 'returns data regardless of wait time' do
       expect(Kernel).not_to receive(:sleep)
       expect(subject.get('aaa', 10)).to eql 'bbb'
     end

@@ -17,7 +17,7 @@ module FaradayThrottler
 
     def deserialize(json)
       JSON.parse(json.to_s) 
-    rescue JSON::ParseError => e
+    rescue JSON::ParserError => e
       raise Errors::SerializerError, e.message
     end
 
