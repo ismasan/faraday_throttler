@@ -24,7 +24,8 @@ describe FaradayThrottler::Middleware do
       conn.use(described_class, {
         lock: lock,
         cache: cache,
-        key_resolver: key_resolver,
+        lock_key_resolver: key_resolver,
+        cache_key_resolver: key_resolver,
         rate: 3,
         wait: 4,
         fallbacks: fallbacks
@@ -61,10 +62,18 @@ describe FaradayThrottler::Middleware do
       end
     end
 
-    describe 'invalid key resolver' do
+    describe 'invalid lock key resolver' do
       it 'complains' do
         expect{
-          described_class.new(app, key_resolver: double('key resolver'))
+          described_class.new(app, lock_key_resolver: double('lock key resolver'))
+        }.to raise_error(ArgumentError)
+      end
+    end
+
+    describe 'invalid cache key resolver' do
+      it 'complains' do
+        expect{
+          described_class.new(app, cache_key_resolver: double('cache key resolver'))
         }.to raise_error(ArgumentError)
       end
     end
