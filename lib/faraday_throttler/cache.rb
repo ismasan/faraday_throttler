@@ -8,7 +8,7 @@ module FaradayThrottler
       store[key] = resp
     end
 
-    def get(key)
+    def get(key, wait = 0)
       store[key]
     end
 

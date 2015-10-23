@@ -26,6 +26,7 @@ describe FaradayThrottler::Middleware do
         cache: cache,
         key_resolver: key_resolver,
         rate: 3,
+        wait: 4,
         fallbacks: fallbacks
       })
 
@@ -117,7 +118,7 @@ describe FaradayThrottler::Middleware do
       end
 
       before do
-        allow(cache).to receive(:get).with(key).and_return cached_response
+        allow(cache).to receive(:get).with(key, 4).and_return cached_response
       end
 
       it 'returns cached response inmediatly' do
@@ -138,7 +139,7 @@ describe FaradayThrottler::Middleware do
       end
 
       before do
-        allow(cache).to receive(:get).with(key).and_return nil
+        allow(cache).to receive(:get).with(key, 4).and_return nil
       end
 
       it 'resolves and returns fallback response' do
