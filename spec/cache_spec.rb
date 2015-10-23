@@ -10,6 +10,11 @@ describe FaradayThrottler::Cache do
     it 'gets data' do
       expect(subject.get('aaa')).to eql 'bbb'
     end
+
+    it 'returns data regardless of wit time' do
+      expect(Kernel).not_to receive(:sleep)
+      expect(subject.get('aaa', 10)).to eql 'bbb'
+    end
   end
 
   context 'when cache is empty' do

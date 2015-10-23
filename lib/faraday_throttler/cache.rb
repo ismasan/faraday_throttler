@@ -11,8 +11,8 @@ module FaradayThrottler
 
     def get(key, wait = 0)
       r = mutex.synchronize { store[key] }
-      return r if wait == 0
-      sleep wait
+      return r if r || wait == 0
+      Kernel.sleep wait
       mutex.synchronize { store[key] }
     end
 
