@@ -28,6 +28,8 @@ module FaradayThrottler
       else
         if cached_response = cache.get(key)
           resp cached_response, :cached, start
+        else
+          resp fallbacks.call(request_env), :fallback, start
         end
       end
     end

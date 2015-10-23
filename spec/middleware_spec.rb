@@ -15,7 +15,7 @@ describe FaradayThrottler::Middleware do
   let(:lock) { double('lock', set: true) }
   let(:cache) { double('cache', set: true) }
   let(:key_resolver) { FaradayThrottler::KeyResolver.new }
-  let(:fallbacks) { double('fallbacks') }
+  let(:fallbacks) { double('fallbacks', call: true) }
 
   let(:key) { key_resolver.call(url: url) }
 
@@ -84,12 +84,33 @@ describe FaradayThrottler::Middleware do
       end
     end
 
-    context 'wait for in-flight request' do
+    context 'no previous cached response' do
+      let(:fallback_response) do
+        {
+          method: :get,
+          body: 'No content yet',
+          status: 200,
+          response_headers: {'Content-type' => 'text/html'}
+        }
+      end
 
+      before do
+        allow(cache).to receive(:get).with(key).and_return nil
+      end
+
+      it 'resolves and returns fallback response' do
+        expect(fallbacks).to receive(:call) do |req|
+          expect(req[:url].to_s).to eql url
+        end.and_return fallback_response
+
+        resp = conn.get(url)
+        expect(resp.body).to eql 'No content yet'
+        expect(resp.headers['X-Throttler']).to eql 'fallback'
+      end
     end
 
     context 'wait timeout, fallback' do
-
+      
     end
   end
 
