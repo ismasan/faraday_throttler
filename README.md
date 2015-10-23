@@ -6,6 +6,7 @@ Configurable Faraday middleware for Ruby HTTP clients that:
 
 * limits request rate to backend services.
 * does its best to return cached or placeholder responses to clients while backend service is unavailable or slow.
+* optionally uses Redis to rate-limit outgoing requests across processes and servers.
 
 ## Installation
 
