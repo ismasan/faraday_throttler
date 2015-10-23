@@ -1,18 +1,22 @@
 module FaradayThrottler
   class Cache
     def initialize
+      @mutex = Mutex.new
       @store = {}
     end
 
     def set(key, resp)
-      store[key] = resp
+      mutex.synchronize { store[key] = resp }
     end
 
     def get(key, wait = 0)
-      store[key]
+      r = mutex.synchronize { store[key] }
+      return r if wait == 0
+      sleep wait
+      mutex.synchronize { store[key] }
     end
 
     private
-    attr_reader :store
+    attr_reader :store, :mutex
   end
 end
