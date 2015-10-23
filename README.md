@@ -6,6 +6,7 @@ Configurable Faraday middleware for Ruby HTTP clients that:
 
 * limits request rate to backend services.
 * does its best to return cached or placeholder responses to clients while backend service is unavailable or slow.
+* optionally uses Redis to rate-limit outgoing requests across processes and servers.
 
 ## Installation
 
@@ -41,7 +42,7 @@ client = Faraday.new(:url => 'https://my.api.com') do |c|
     # Queued requests will wait for up to 3 seconds for current in-flight request
     # to the same path.
     # If in-flight request hasn't finished after that time, return a default placeholder response.
-    wait: 3
+    wait: 2
  )
  c.adapter Faraday.default_adapter
 end
@@ -54,15 +55,45 @@ resp = client.get('/foobar')
 resp.body
 ```
 
-The configuration above will only issue 1 request every 3 seconds to `my.api.com/foobar`. Requests to the same path will wait for up to 3 seconds for current _in-flight_ request to finish. 
+The configuration above will only issue 1 request every 3 seconds to `my.api.com/foobar`. Requests to the same path will wait for up to 2 seconds for current _in-flight_ request to finish. 
 
 If in-flight requests finishes within that period, queued requests will respond with the same data.
 
-If in-flight request doesn't finish within 3 seconds, queued requests will attempt to serve a previous response to the same resource from cache.
+If in-flight request doesn't finish within 2 seconds, queued requests will attempt to serve a previous response to the same resource from cache.
 
 If no matching response found in cache, a default fallback response will be used (status 204 No Content).
 
 Tweaking the `rate` and `wait` arguments allows you to control the rate of cached, fresh and fallback reponses.
+
+### Distributed Redis lock and cache
+
+The defaults use in-memory lock and cache store. To make the most efficient use of this gem across processes and servers, you can use [Redis](http://redis.io/) as a distributed lock and cache store.
+
+```ruby
+require 'redis'
+require 'faraday_throttler/redis_lock'
+require 'faraday_throttler/redis_cache'
+
+redis = Redis.new('my-redis-server.com:1234')
+
+redis_lock = FaradayThrottler::RedisLock.new(redis)
+
+# Cache entries will be available for 1 hour
+redis_lock = FaradayThrottler::RedisCache.new(redis: redis, ttl: 3600)
+
+client = Faraday.new(:url => 'https://my.api.com') do |c|
+ c.use(
+    :throttler,
+    rate: 3,
+    wait: 2,
+    # Use Redis-backed lock
+    lock: redis_lock,
+    # Use Redis-backed cache with set expiration
+    cache: redis_cache
+ )
+ c.adapter Faraday.default_adapter
+end
+```
 
 ## Development
 
@@ -74,3 +105,10 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 Bug reports and pull requests are welcome on GitHub at https://github.com/ismasan/faraday_throttler.
 
+To contribute with code:
+
+1. Fork it ( http://github.com/ismasan/faraday_throttler/fork )
+2. Create your feature branch (`git checkout -b my-new-feature`)
+3. Commit your changes (`git commit -am 'Add some feature'`)
+4. Push to the branch (`git push origin my-new-feature`)
+5. Create new Pull Request
