@@ -61,4 +61,5 @@ module FaradayThrottler
     end
   end
 
+  Faraday::Middleware.register_middleware throttler: ->{ Middleware }
 end
