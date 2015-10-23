@@ -17,6 +17,8 @@ describe FaradayThrottler::Middleware do
   let(:key_resolver) { FaradayThrottler::KeyResolver.new }
   let(:fallbacks) { double('fallbacks') }
 
+  let(:key) { key_resolver.call(url: url) }
+
   let(:conn) do
     Faraday.new do |conn|
       conn.use(described_class, {
@@ -33,8 +35,6 @@ describe FaradayThrottler::Middleware do
   end
 
   context 'fresh request (no cache, no in-flight request)' do
-
-    let(:key) { key_resolver.call(url: url) }
 
     it 'requests backend and responds with fresh data' do
       resp = conn.get(url)
@@ -60,11 +60,28 @@ describe FaradayThrottler::Middleware do
   context 'previous in-flight request' do
 
     before do
-      conn.get('/test')
+      allow(lock).to receive(:set).with(key, 3).and_return false
     end
 
     context 'existing cached response' do
+      let(:cached_response) do
+        {
+          method: :get,
+          body: 'previous response body',
+          status: 200,
+          response_headers: {'Content-type' => 'text/html'}
+        }
+      end
 
+      before do
+        allow(cache).to receive(:get).with(key).and_return cached_response
+      end
+
+      it 'returns cached response inmediatly' do
+        resp = conn.get(url)
+        expect(resp.body).to eql 'previous response body'
+        expect(resp.headers['X-Throttler']).to eql 'cached'
+      end
     end
 
     context 'wait for in-flight request' do

@@ -17,17 +17,33 @@ module FaradayThrottler
     def call(request_env)
       return app.call(request_env) if request_env[:method] != :get
 
+      start = Time.now
+
       key = key_resolver.call(request_env)
 
       if lock.set(key, rate)
         app.call(request_env).on_complete do |response_env|
           cache.set key, response_env
         end
+      else
+        if cached_response = cache.get(key)
+          resp cached_response, :cached, start
+        end
       end
     end
 
     private
     attr_reader :app, :lock, :cache, :key_resolver, :rate, :wait, :fallbacks
+
+    def resp(resp_env, status = :fresh, start = Time.now)
+      resp_env = Faraday::Env.from(resp_env)
+      resp_env[:response_headers].merge!(
+        'X-Throttler' => status.to_s,
+        'X-ThrottlerTime' => (Time.now - start)
+      )
+
+      ::Faraday::Response.new(resp_env)
+    end
   end
 
 end
