@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.authors       = ["Ismael Celis"]
   spec.email         = ["ismaelct@gmail.com"]
 
-  spec.summary       = %q{Redis-backed request throttler requests to APIs with configurable cache}
+  spec.summary       = %q{Redis-backed request throttler requests to protect backend APIs against request stampedes}
   spec.description   = %q{Configure how often you want to hit backend APIs, and fallback responses to keep clients happy}
   spec.homepage      = "https://github.com/ismasan/faraday_throttler"
 
