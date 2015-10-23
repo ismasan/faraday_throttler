@@ -16,7 +16,7 @@ module FaradayThrottler
       @lock = lock
       @cache = cache
       @key_resolver = key_resolver
-      @rate = rate
+      @rate = rate.to_i
       @fallbacks = fallbacks
       super app
     end
