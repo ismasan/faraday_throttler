@@ -42,7 +42,7 @@ client = Faraday.new(:url => 'https://my.api.com') do |c|
     # Queued requests will wait for up to 3 seconds for current in-flight request
     # to the same path.
     # If in-flight request hasn't finished after that time, return a default placeholder response.
-    wait: 3
+    wait: 2
  )
  c.adapter Faraday.default_adapter
 end
@@ -55,11 +55,11 @@ resp = client.get('/foobar')
 resp.body
 ```
 
-The configuration above will only issue 1 request every 3 seconds to `my.api.com/foobar`. Requests to the same path will wait for up to 3 seconds for current _in-flight_ request to finish. 
+The configuration above will only issue 1 request every 3 seconds to `my.api.com/foobar`. Requests to the same path will wait for up to 2 seconds for current _in-flight_ request to finish. 
 
 If in-flight requests finishes within that period, queued requests will respond with the same data.
 
-If in-flight request doesn't finish within 3 seconds, queued requests will attempt to serve a previous response to the same resource from cache.
+If in-flight request doesn't finish within 2 seconds, queued requests will attempt to serve a previous response to the same resource from cache.
 
 If no matching response found in cache, a default fallback response will be used (status 204 No Content).
 
@@ -85,7 +85,7 @@ client = Faraday.new(:url => 'https://my.api.com') do |c|
  c.use(
     :throttler,
     rate: 3,
-    wait: 3,
+    wait: 2,
     # Use Redis-backed lock
     lock: redis_lock,
     # Use Redis-backed cache with set expiration
