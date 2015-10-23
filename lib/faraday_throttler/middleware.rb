@@ -32,6 +32,7 @@ module FaradayThrottler
       if lock.set(key, rate)
         app.call(request_env).on_complete do |response_env|
           cache.set key, response_env
+          debug_headers response_env, :fresh, start
         end
       else
         if cached_response = cache.get(key, wait)
@@ -47,11 +48,7 @@ module FaradayThrottler
 
     def resp(resp_env, status = :fresh, start = Time.now)
       resp_env = Faraday::Env.from(resp_env)
-      resp_env[:response_headers].merge!(
-        'X-Throttler' => status.to_s,
-        'X-ThrottlerTime' => (Time.now - start)
-      )
-
+      debug_headers resp_env, status, start
       ::Faraday::Response.new(resp_env)
     end
 
@@ -59,6 +56,13 @@ module FaradayThrottler
       methods.each do |m|
         raise ArgumentError, %(#{dep_name} must implement :#{m}) unless dep.respond_to?(m)
       end
+    end
+
+    def debug_headers(resp_env, status, start)
+      resp_env[:response_headers].merge!(
+        'X-Throttler' => status.to_s,
+        'X-ThrottlerTime' => (Time.now - start)
+      )
     end
   end
 
