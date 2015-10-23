@@ -1,8 +1,8 @@
 module FaradayThrottler
   class Cache
-    def initialize
+    def initialize(store = {})
       @mutex = Mutex.new
-      @store = {}
+      @store = store
     end
 
     def set(key, resp)
