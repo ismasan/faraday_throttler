@@ -2,9 +2,10 @@
 
 # FaradayThrottler
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/faraday_throttler`. To experiment with that code, run `bin/console` for an interactive prompt.
+Configurable Faraday middleware for Ruby HTTP clients that:
 
-TODO: Delete this and the text above, and describe your gem
+* limits request rate to backend services.
+* does its best to return cached or placeholder responses to clients while backend service is unavailable or slow.
 
 ## Installation
 
@@ -24,7 +25,44 @@ Or install it yourself as:
 
 ## Usage
 
-TODO: Write usage instructions here
+### Defaults
+
+The defaul configuration use an in-memory lock and in-memory cache. Not suitable for multi-server deployments.
+
+```ruby
+require 'faraday'
+require 'faraday_throttler'
+
+client = Faraday.new(:url => 'https://my.api.com') do |c|
+ c.use(
+    :throttler,
+    # Allow up to 1 request every 3 seconds, per path, to backend
+    rate: 3,
+    # Queued requests will wait for up to 3 seconds for current in-flight request
+    # to the same path.
+    # If in-flight request hasn't finished after that time, return a default placeholder response.
+    wait: 3
+ )
+ c.adapter Faraday.default_adapter
+end
+```
+
+Make some requests:
+
+```ruby
+resp = client.get('/foobar')
+resp.body
+```
+
+The configuration above will only issue 1 request every 3 seconds to `my.api.com/foobar`. Requests to the same path will wait for up to 3 seconds for current _in-flight_ request to finish. 
+
+If in-flight requests finishes within that period, queued requests will respond with the same data.
+
+If in-flight request doesn't finish within 3 seconds, queued requests will attempt to serve a previous response to the same resource from cache.
+
+If no matching response found in cache, a default fallback response will be used (status 204 No Content).
+
+Tweaking the `rate` and `wait` arguments allows you to control the rate of cached, fresh and fallback reponses.
 
 ## Development
 
@@ -34,5 +72,5 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/faraday_throttler.
+Bug reports and pull requests are welcome on GitHub at https://github.com/ismasan/faraday_throttler.
 
