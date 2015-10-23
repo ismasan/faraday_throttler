@@ -7,7 +7,55 @@ require 'faraday_throttler/fallbacks'
 module FaradayThrottler
 
   class Middleware < Faraday::Middleware
-    def initialize(app, lock: MemLock.new, cache: Cache.new, lock_key_resolver: KeyResolver.new, cache_key_resolver: KeyResolver.new, rate: 10, wait: 5, fallbacks: Fallbacks.new)
+    def initialize(
+        # The base Faraday adapter.
+        app,
+
+        # Request lock. This checks that only one unique request is in-flight at a given time.
+        # Request uniqueness is defined by :lock_key_resolver.
+        # Interface:
+        #   #set(key String, ttl Integer)
+        #
+        # Returns _true_ if new lock aquired (no previous in-flight request)
+        # Returns _false_ if no lock aquired (there is a current lock on an in-flight request).
+        # MemLock is an in-memory lock. On a multi-threaded / multi-process environment
+        # prefer the RedisLock implementation, which uses Redis as a distributed lock.
+        lock: MemLock.new,
+
+        # Response cache. Caches fresh responses from backend service,
+        # so they can be used as a first fallback when connection exceeds :wait time.
+        # Interface:
+        #   #set(key String, response_env Hash)
+        #   #get(key String, wait_seconds Integer)
+        #
+        # #get can implement polling/blocking behaviour
+        # to wait for inflight-request to populate cache
+        cache: Cache.new,
+
+        # Resolves request unique key to use as lock
+        # Interface:
+        #   #call(request_env Hash) String
+        lock_key_resolver: KeyResolver.new,
+
+        # Resolves response unique key to use as cache key
+        # Interface:
+        #   #call(response_env Hash) String
+        cache_key_resolver: KeyResolver.new,
+
+        # Allow up to 1 request every 3 seconds, per path, to backend
+        rate: 10,
+        # Queued requests will wait for up to 3 seconds for current in-flight request
+        # to the same path.
+        # If in-flight request hasn't finished after that time, return a default placeholder response.
+        wait: 5,
+        # Fallbacks resolver. Returns a fallback response when conection has waited over :wait time
+        # for an in-flight response.
+        # Use this to return sensible empty or error responses to your clients.
+        # Interface:
+        #   #call(request_env Hash) response_env Hash
+        #
+        fallbacks: Fallbacks.new)
+
       validate_dep! lock, :lock, :set
       validate_dep! cache, :cache, :get, :set
       validate_dep! lock_key_resolver, :lock_key_resolver, :call
