@@ -65,6 +65,36 @@ If no matching response found in cache, a default fallback response will be used
 
 Tweaking the `rate` and `wait` arguments allows you to control the rate of cached, fresh and fallback reponses.
 
+### Redis distributed lock and cache
+
+The defaults use in-memory lock and cache store. To make the most efficient use of this gem across processes and servers, you can use [Redis](http://redis.io/) as a distributed lock and cache store.
+
+```ruby
+require 'redis'
+require 'faraday_throttler/redis_lock'
+require 'faraday_throttler/redis_cache'
+
+redis = Redis.new('my-redis-server.com:1234')
+
+redis_lock = FaradayThrottler::RedisLock.new(redis)
+
+# Cache entries will be available for 1 hour
+redis_lock = FaradayThrottler::RedisCache.new(redis: redis, ttl: 3600)
+
+client = Faraday.new(:url => 'https://my.api.com') do |c|
+ c.use(
+    :throttler,
+    rate: 3,
+    wait: 3,
+    # Use Redis-backed lock
+    lock: redis_lock,
+    # Use Redis-backed cache with set expiration
+    cache: redis_cache
+ )
+ c.adapter Faraday.default_adapter
+end
+```
+
 ## Development
 
 After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake spec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
