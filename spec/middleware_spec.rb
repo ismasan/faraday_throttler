@@ -13,7 +13,7 @@ describe FaradayThrottler::Middleware do
   end
 
   let(:lock) { double('lock', set: true) }
-  let(:cache) { double('cache', set: true) }
+  let(:cache) { double('cache', get: true, set: true) }
   let(:key_resolver) { FaradayThrottler::KeyResolver.new }
   let(:fallbacks) { double('fallbacks', call: true) }
 
@@ -26,11 +26,54 @@ describe FaradayThrottler::Middleware do
         cache: cache,
         key_resolver: key_resolver,
         rate: 3,
-        wait: 4,
         fallbacks: fallbacks
       })
 
       conn.adapter :test, request_stubs
+    end
+  end
+
+  context 'dependencies' do
+    let(:app) { double('app') }
+
+    describe 'defaults' do
+      it 'works' do
+        expect{
+          described_class.new(app)
+        }.not_to raise_error
+      end
+    end
+
+    describe 'invalid lock' do
+      it 'complains' do
+        expect{
+          described_class.new(app, lock: double('lock'))
+        }.to raise_error(ArgumentError)
+      end
+    end
+
+    describe 'invalid cache' do
+      it 'complains' do
+        expect{
+          described_class.new(app, cache: double('cache'))
+        }.to raise_error(ArgumentError)
+      end
+    end
+
+    describe 'invalid key resolver' do
+      it 'complains' do
+        expect{
+          described_class.new(app, key_resolver: double('key resolver'))
+        }.to raise_error(ArgumentError)
+      end
+    end
+
+    describe 'invalid fallbacks' do
+      it 'complains' do
+        expect{
+          described_class.new(app, fallbacks: double('fallbacks'))
+        }.to raise_error(ArgumentError)
+      end
     end
   end
 
