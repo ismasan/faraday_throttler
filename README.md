@@ -65,7 +65,7 @@ If no matching response found in cache, a default fallback response will be used
 
 Tweaking the `rate` and `wait` arguments allows you to control the rate of cached, fresh and fallback reponses.
 
-### Redis distributed lock and cache
+### Distributed Redis lock and cache
 
 The defaults use in-memory lock and cache store. To make the most efficient use of this gem across processes and servers, you can use [Redis](http://redis.io/) as a distributed lock and cache store.
 
