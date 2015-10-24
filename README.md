@@ -39,7 +39,7 @@ client = Faraday.new(:url => 'https://my.api.com') do |c|
     :throttler,
     # Allow up to 1 request every 3 seconds, per path, to backend
     rate: 3,
-    # Queued requests will wait for up to 3 seconds for current in-flight request
+    # Queued requests will wait for up to 2 seconds for current in-flight request
     # to the same path.
     # If in-flight request hasn't finished after that time, return a default placeholder response.
     wait: 2
@@ -57,17 +57,17 @@ resp.body
 
 The configuration above will only issue 1 request every 3 seconds to `my.api.com/foobar`. Requests to the same path will wait for up to 2 seconds for current _in-flight_ request to finish. 
 
-If in-flight requests finishes within that period, queued requests will respond with the same data.
+If an in-flight request finishes within that period, queued requests will respond with the same data.
 
-If in-flight request doesn't finish within 2 seconds, queued requests will attempt to serve a previous response to the same resource from cache.
+If the in-flight request doesn't finish within 2 seconds, queued requests will attempt to serve a previous response from the same resource from cache.
 
-If no matching response found in cache, a default fallback response will be used (status 204 No Content).
+If no matching response found in cache, a default fallback response will be used (status 204 No Content). Fallback responses can be cofigured.
 
 Tweaking the `rate` and `wait` arguments allows you to control the rate of cached, fresh and fallback reponses.
 
 ### Distributed Redis lock and cache
 
-The defaults use in-memory lock and cache store. To make the most efficient use of this gem across processes and servers, you can use [Redis](http://redis.io/) as a distributed lock and cache store.
+The defaults use in-memory lock and cache store implementations. To make the most efficient use of this gem across processes and servers, you can use [Redis](http://redis.io/) as a distributed lock and cache store.
 
 ```ruby
 require 'redis'

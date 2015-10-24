@@ -42,19 +42,21 @@ module FaradayThrottler
         #   #call(response_env Hash) String
         cache_key_resolver: KeyResolver.new,
 
-        # Allow up to 1 request every 3 seconds, per path, to backend
+        # Allow up to 1 request every 10 seconds, per path, to backend
         rate: 10,
-        # Queued requests will wait for up to 3 seconds for current in-flight request
+
+        # Queued requests will wait for up to 5 seconds for current in-flight request
         # to the same path.
         # If in-flight request hasn't finished after that time, return a default placeholder response.
         wait: 5,
+
         # Fallbacks resolver. Returns a fallback response when conection has waited over :wait time
         # for an in-flight response.
         # Use this to return sensible empty or error responses to your clients.
         # Interface:
         #   #call(request_env Hash) response_env Hash
-        #
-        fallbacks: Fallbacks.new)
+        fallbacks: Fallbacks.new
+    )
 
       validate_dep! lock, :lock, :set
       validate_dep! cache, :cache, :get, :set
