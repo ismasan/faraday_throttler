@@ -9,6 +9,7 @@ describe FaradayThrottler::Middleware do
   let(:request_stubs) do
     Faraday::Adapter::Test::Stubs.new do |stub|
       stub.get(url) { |env| [200, {}, 'response body'] }
+      stub.get('/slow') { |env| raise Timeout::Error.new('Too slow') }
     end
   end
 
@@ -17,6 +18,7 @@ describe FaradayThrottler::Middleware do
   let(:key_resolver) { FaradayThrottler::KeyResolver.new }
   let(:fallbacks) { double('fallbacks', call: fallback_response) }
   let(:gauge) { nil }
+  let(:timeout) { 0 }
 
   let(:key) { key_resolver.call(url: url) }
 
@@ -29,6 +31,7 @@ describe FaradayThrottler::Middleware do
         cache_key_resolver: key_resolver,
         rate: 3,
         wait: 4,
+        timeout: timeout,
         fallbacks: fallbacks,
         gauge: gauge
       })
@@ -173,7 +176,13 @@ describe FaradayThrottler::Middleware do
     end
 
     context 'wait timeout, fallback' do
-      
+      let(:timeout) { 3 }
+
+      it 'it uses fallback response' do
+        resp = conn.get('/slow')
+        expect(resp.body).to eql 'No content yet'
+        expect(resp.headers['X-Throttler']).to eql 'fallback'
+      end
     end
   end
 
@@ -195,6 +204,22 @@ describe FaradayThrottler::Middleware do
 
         resp = conn.get(url)
         expect(resp.body).to eql 'response body'
+      end
+    end
+
+    context 'timeout' do
+      let(:timeout) { 3 }
+      it 'notifies gauge with :timeout' do
+        expect(lock).to receive(:set).and_return true
+        expect(gauge).to receive(:start) do |k, tm|
+          expect(tm).to be_a Time
+        end
+
+        expect(gauge).to receive(:finish) do |k, state|
+          expect(state).to eql :timeout
+        end
+
+        resp = conn.get('/slow')
       end
     end
 

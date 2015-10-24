@@ -1,3 +1,4 @@
+require 'timeout'
 require 'faraday'
 require 'faraday_throttler/key_resolver'
 require 'faraday_throttler/mem_lock'
@@ -51,6 +52,11 @@ module FaradayThrottler
         # If in-flight request hasn't finished after that time, return a default placeholder response.
         wait: 5,
 
+        # Wraps requests to backend service in a timeout block, in seconds.
+        # If request takes longer than this, Gauge#finish() is called with a state of :timeout and the response is delegated to Fallbacks.
+        # timeout: 0 disables this behaviour.
+        timeout: 0,
+
         # Fallbacks resolver. Returns a fallback response when conection has waited over :wait time
         # for an in-flight response.
         # Use this to return sensible empty or error responses to your clients.
@@ -85,6 +91,7 @@ module FaradayThrottler
       @cache_key_resolver = cache_key_resolver
       @rate = rate.to_i
       @wait = wait.to_i
+      @timeout = timeout.to_i
       @fallbacks = fallbacks
       @gauge = gauge || Gauge.new(rate: @rate, wait: @wait)
 
@@ -104,10 +111,17 @@ module FaradayThrottler
       gauge.start cache_key, start
 
       if lock.set(lock_key, gauge.rate)
-        app.call(request_env).on_complete do |response_env|
-          cache.set cache_key, response_env
-          gauge.finish cache_key, :fresh
-          debug_headers response_env, :fresh, start
+        begin
+          with_timeout(timeout) {
+            app.call(request_env).on_complete do |response_env|
+              cache.set cache_key, response_env
+              gauge.finish cache_key, :fresh
+              debug_headers response_env, :fresh, start
+            end
+          }
+        rescue ::Timeout::Error => e
+          gauge.finish cache_key, :timeout
+          resp fallbacks.call(request_env), :fallback, start
         end
       else
         if cached_response = cache.get(cache_key, gauge.wait)
@@ -121,7 +135,7 @@ module FaradayThrottler
     end
 
     private
-    attr_reader :app, :lock, :cache, :lock_key_resolver, :cache_key_resolver, :rate, :wait, :fallbacks, :gauge
+    attr_reader :app, :lock, :cache, :lock_key_resolver, :cache_key_resolver, :rate, :wait, :timeout, :fallbacks, :gauge
 
     def resp(resp_env, status = :fresh, start = Time.now)
       resp_env = Faraday::Env.from(resp_env)
@@ -142,6 +156,13 @@ module FaradayThrottler
       )
     end
 
+    def with_timeout(seconds, &block)
+      if seconds == 0
+        yield
+      else
+        ::Timeout.timeout(seconds, &block)
+      end
+    end
   end
 
   Faraday::Middleware.register_middleware throttler: ->{ Middleware }
