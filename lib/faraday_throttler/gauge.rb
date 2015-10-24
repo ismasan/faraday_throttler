@@ -10,6 +10,10 @@ module FaradayThrottler
 
     end
 
+    def update(req_id, state)
+
+    end
+
     def finish(req_id, state)
 
     end

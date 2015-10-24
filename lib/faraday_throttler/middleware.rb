@@ -53,7 +53,10 @@ module FaradayThrottler
         wait: 5,
 
         # Wraps requests to backend service in a timeout block, in seconds.
-        # If request takes longer than this, Gauge#finish() is called with a state of :timeout and the response is delegated to Fallbacks.
+        # If request takes longer than this:
+        # * `gauge` receives #update(req_id, :timeout)
+        # * Attempt to serve old response from cache. `gauge` receives #finish(req_id, :cached) if successful.
+        # * If no cached response, delegate to fallbacks#call(request_env). `gauge` receives #finish(req_id, :fallback)
         # timeout: 0 disables this behaviour.
         timeout: 0,
 
@@ -72,10 +75,11 @@ module FaradayThrottler
         #   #rate() Integer
         #   #wait() Integer
         #   #start(request_id String, start_time Time)
+        #   #update(request_id String, state Symbol)
         #   #finish(request_id String, state Symbol)
         #
         # `request_id` is the result of cache_key_resolver#call, normally an MD5 hash of the request full URL.
-        # `state` can be one of :fresh, :cached, :fallback
+        # `state` can be one of :fresh, :cached, :timeout, :fallback
         gauge: nil
     )
 
@@ -95,7 +99,7 @@ module FaradayThrottler
       @fallbacks = fallbacks
       @gauge = gauge || Gauge.new(rate: @rate, wait: @wait)
 
-      validate_dep! @gauge, :gauge, :start, :finish
+      validate_dep! @gauge, :gauge, :start, :update, :finish
 
       super app
     end
@@ -120,22 +124,26 @@ module FaradayThrottler
             end
           }
         rescue ::Timeout::Error => e
-          gauge.finish cache_key, :timeout
-          resp fallbacks.call(request_env), :fallback, start
+          gauge.update cache_key, :timeout
+          serve_from_cache_or_fallback request_env, cache_key, start
         end
       else
-        if cached_response = cache.get(cache_key, gauge.wait)
-          gauge.finish cache_key, :cached
-          resp cached_response, :cached, start
-        else
-          gauge.finish cache_key, :fallback
-          resp fallbacks.call(request_env), :fallback, start
-        end
+        serve_from_cache_or_fallback request_env, cache_key, start
       end
     end
 
     private
     attr_reader :app, :lock, :cache, :lock_key_resolver, :cache_key_resolver, :rate, :wait, :timeout, :fallbacks, :gauge
+
+    def serve_from_cache_or_fallback(request_env, cache_key, start)
+      if cached_response = cache.get(cache_key, gauge.wait)
+        gauge.finish cache_key, :cached
+        resp cached_response, :cached, start
+      else
+        gauge.finish cache_key, :fallback
+        resp fallbacks.call(request_env), :fallback, start
+      end
+    end
 
     def resp(resp_env, status = :fresh, start = Time.now)
       resp_env = Faraday::Env.from(resp_env)

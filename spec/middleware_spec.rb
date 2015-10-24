@@ -178,16 +178,34 @@ describe FaradayThrottler::Middleware do
     context 'wait timeout, fallback' do
       let(:timeout) { 3 }
 
-      it 'it uses fallback response' do
-        resp = conn.get('/slow')
-        expect(resp.body).to eql 'No content yet'
-        expect(resp.headers['X-Throttler']).to eql 'fallback'
+      context 'cached response' do
+        before do
+          allow(cache).to receive(:get).and_return cached_response
+        end
+
+        it 'it uses fallback response' do
+          resp = conn.get('/slow')
+          expect(resp.body).to eql 'previous response body'
+          expect(resp.headers['X-Throttler']).to eql 'cached'
+        end
+      end
+
+      context 'no cache' do
+        before do
+          allow(cache).to receive(:get).and_return nil
+        end
+
+        it 'it uses fallback response' do
+          resp = conn.get('/slow')
+          expect(resp.body).to eql 'No content yet'
+          expect(resp.headers['X-Throttler']).to eql 'fallback'
+        end
       end
     end
   end
 
   describe 'custom gauge' do
-    let(:gauge) { double('gauge', start: true, finish: true, rate: 1, wait: 2) }
+    let(:gauge) { double('gauge', start: true, update: true, finish: true, rate: 1, wait: 2) }
 
     context 'fresh response' do
       it 'uses :rate and :wait readers in gauge, notifies gauge' do
@@ -209,14 +227,23 @@ describe FaradayThrottler::Middleware do
 
     context 'timeout' do
       let(:timeout) { 3 }
+
+      before do
+        allow(cache).to receive(:get).and_return cached_response
+      end
+
       it 'notifies gauge with :timeout' do
         expect(lock).to receive(:set).and_return true
         expect(gauge).to receive(:start) do |k, tm|
           expect(tm).to be_a Time
         end
 
-        expect(gauge).to receive(:finish) do |k, state|
+        expect(gauge).to receive(:update) do |k, state|
           expect(state).to eql :timeout
+        end
+
+        expect(gauge).to receive(:finish) do |k, state|
+          expect(state).to eql :cached
         end
 
         resp = conn.get('/slow')
