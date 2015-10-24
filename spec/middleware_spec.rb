@@ -15,7 +15,8 @@ describe FaradayThrottler::Middleware do
   let(:lock) { double('lock', set: true) }
   let(:cache) { double('cache', get: true, set: true) }
   let(:key_resolver) { FaradayThrottler::KeyResolver.new }
-  let(:fallbacks) { double('fallbacks', call: true) }
+  let(:fallbacks) { double('fallbacks', call: fallback_response) }
+  let(:gauge) { nil }
 
   let(:key) { key_resolver.call(url: url) }
 
@@ -28,11 +29,30 @@ describe FaradayThrottler::Middleware do
         cache_key_resolver: key_resolver,
         rate: 3,
         wait: 4,
-        fallbacks: fallbacks
+        fallbacks: fallbacks,
+        gauge: gauge
       })
 
       conn.adapter :test, request_stubs
     end
+  end
+
+  let(:fallback_response) do
+    {
+      method: :get,
+      body: 'No content yet',
+      status: 200,
+      response_headers: {'Content-type' => 'text/html'}
+    }
+  end
+
+  let(:cached_response) do
+    {
+      method: :get,
+      body: 'previous response body',
+      status: 200,
+      response_headers: {'Content-type' => 'text/html'}
+    }
   end
 
   context 'dependencies' do
@@ -85,6 +105,14 @@ describe FaradayThrottler::Middleware do
         }.to raise_error(ArgumentError)
       end
     end
+
+    describe 'invalid gauge' do
+      it 'complains' do
+        expect{
+          described_class.new(app, gauge: double('gauge'))
+        }.to raise_error(ArgumentError)
+      end
+    end
   end
 
   context 'fresh request (no cache, no in-flight request)' do
@@ -117,15 +145,6 @@ describe FaradayThrottler::Middleware do
     end
 
     context 'existing cached response' do
-      let(:cached_response) do
-        {
-          method: :get,
-          body: 'previous response body',
-          status: 200,
-          response_headers: {'Content-type' => 'text/html'}
-        }
-      end
-
       before do
         allow(cache).to receive(:get).with(key, 4).and_return cached_response
       end
@@ -138,15 +157,6 @@ describe FaradayThrottler::Middleware do
     end
 
     context 'no previous cached response' do
-      let(:fallback_response) do
-        {
-          method: :get,
-          body: 'No content yet',
-          status: 200,
-          response_headers: {'Content-type' => 'text/html'}
-        }
-      end
-
       before do
         allow(cache).to receive(:get).with(key, 4).and_return nil
       end
@@ -164,6 +174,64 @@ describe FaradayThrottler::Middleware do
 
     context 'wait timeout, fallback' do
       
+    end
+  end
+
+  describe 'custom gauge' do
+    let(:gauge) { double('gauge', start: true, finish: true, rate: 1, wait: 2) }
+
+    context 'fresh response' do
+      it 'uses :rate and :wait readers in gauge, notifies gauge' do
+        expect(lock).to receive(:set).with(key, 1).and_return true
+        expect(gauge).to receive(:start) do |k, tm|
+          expect(k).to eql key
+          expect(tm).to be_a Time
+        end
+
+        expect(gauge).to receive(:finish) do |k, state|
+          expect(k).to eql key
+          expect(state).to eql :fresh
+        end
+
+        resp = conn.get(url)
+        expect(resp.body).to eql 'response body'
+      end
+    end
+
+    context 'cached response' do
+      it 'uses :rate and :wait readers in gauge, notifies gauge' do
+        expect(lock).to receive(:set).with(key, 1).and_return false
+        expect(cache).to receive(:get).with(key, 2).and_return cached_response
+        expect(gauge).to receive(:start) do |k, tm|
+          expect(k).to eql key
+          expect(tm).to be_a Time
+        end
+
+        expect(gauge).to receive(:finish) do |k, state|
+          expect(k).to eql key
+          expect(state).to eql :cached
+        end
+
+        conn.get(url)
+      end
+    end
+
+    context 'fallback response' do
+      it 'uses :rate and :wait readers in gauge, notifies gauge' do
+        expect(lock).to receive(:set).with(key, 1).and_return false
+        expect(cache).to receive(:get).with(key, 2).and_return nil
+        expect(gauge).to receive(:start) do |k, tm|
+          expect(k).to eql key
+          expect(tm).to be_a Time
+        end
+
+        expect(gauge).to receive(:finish) do |k, state|
+          expect(k).to eql key
+          expect(state).to eql :fallback
+        end
+
+        conn.get(url)
+      end
     end
   end
 

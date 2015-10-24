@@ -3,6 +3,7 @@ require 'faraday_throttler/key_resolver'
 require 'faraday_throttler/mem_lock'
 require 'faraday_throttler/cache'
 require 'faraday_throttler/fallbacks'
+require 'faraday_throttler/gauge'
 
 module FaradayThrottler
 
@@ -55,7 +56,21 @@ module FaradayThrottler
         # Use this to return sensible empty or error responses to your clients.
         # Interface:
         #   #call(request_env Hash) response_env Hash
-        fallbacks: Fallbacks.new
+        fallbacks: Fallbacks.new,
+
+        # Gauge exposes #rate and #wait, to be used as TTL for lock and cache wait time.
+        # The #start and #finish methods are called during a request/response cycle.
+        # This should allow custom gauges to implement their own heuristic to calculate #rate and #wait on the fly.
+        # By default a Null Gauge is used that just returns the values in the :rate and :wait arguments.
+        # Interface:
+        #   #rate() Integer
+        #   #wait() Integer
+        #   #start(request_id String, start_time Time)
+        #   #finish(request_id String, state Symbol)
+        #
+        # `request_id` is the result of cache_key_resolver#call, normally an MD5 hash of the request full URL.
+        # `state` can be one of :fresh, :cached, :fallback
+        gauge: nil
     )
 
       validate_dep! lock, :lock, :set
@@ -71,6 +86,10 @@ module FaradayThrottler
       @rate = rate.to_i
       @wait = wait.to_i
       @fallbacks = fallbacks
+      @gauge = gauge || Gauge.new(rate: @rate, wait: @wait)
+
+      validate_dep! @gauge, :gauge, :start, :finish
+
       super app
     end
 
@@ -82,22 +101,27 @@ module FaradayThrottler
       lock_key = lock_key_resolver.call(request_env)
       cache_key = cache_key_resolver.call(request_env)
 
-      if lock.set(lock_key, rate)
+      gauge.start cache_key, start
+
+      if lock.set(lock_key, gauge.rate)
         app.call(request_env).on_complete do |response_env|
           cache.set cache_key, response_env
+          gauge.finish cache_key, :fresh
           debug_headers response_env, :fresh, start
         end
       else
-        if cached_response = cache.get(cache_key, wait)
+        if cached_response = cache.get(cache_key, gauge.wait)
+          gauge.finish cache_key, :cached
           resp cached_response, :cached, start
         else
+          gauge.finish cache_key, :fallback
           resp fallbacks.call(request_env), :fallback, start
         end
       end
     end
 
     private
-    attr_reader :app, :lock, :cache, :lock_key_resolver, :cache_key_resolver, :rate, :wait, :fallbacks
+    attr_reader :app, :lock, :cache, :lock_key_resolver, :cache_key_resolver, :rate, :wait, :fallbacks, :gauge
 
     def resp(resp_env, status = :fresh, start = Time.now)
       resp_env = Faraday::Env.from(resp_env)
