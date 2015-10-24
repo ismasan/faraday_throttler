@@ -95,6 +95,10 @@ client = Faraday.new(:url => 'https://my.api.com') do |c|
 end
 ```
 
+## Advanced usage
+
+Most internal behaviours are split into delegate objects that you can pass as middleware arguments to override the defaults. See the details [in the code](https://github.com/ismasan/faraday_throttler/blob/master/lib/faraday_throttler/middleware.rb#L16).
+
 ## Development
 
 After checking out the repo, run `bundle install` to install dependencies. Then, run `bundle exec rspec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
