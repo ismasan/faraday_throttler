@@ -1,7 +1,5 @@
 module FaradayThrottler
   class Gauge
-    attr_reader :rate, :wait
-
     def initialize(rate:, wait:)
       @rate, @wait = rate, wait
     end
@@ -16,6 +14,14 @@ module FaradayThrottler
 
     def finish(req_id, state)
 
+    end
+
+    def rate(req_id)
+      @rate
+    end
+
+    def wait(req_id)
+      @wait
     end
   end
 end

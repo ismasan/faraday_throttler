@@ -72,8 +72,8 @@ module FaradayThrottler
         # This should allow custom gauges to implement their own heuristic to calculate #rate and #wait on the fly.
         # By default a Null Gauge is used that just returns the values in the :rate and :wait arguments.
         # Interface:
-        #   #rate() Integer
-        #   #wait() Integer
+        #   #rate(request_id String) Integer
+        #   #wait(request_id String) Integer
         #   #start(request_id String, start_time Time)
         #   #update(request_id String, state Symbol)
         #   #finish(request_id String, state Symbol)
@@ -114,7 +114,7 @@ module FaradayThrottler
 
       gauge.start cache_key, start
 
-      if lock.set(lock_key, gauge.rate)
+      if lock.set(lock_key, gauge.rate(cache_key))
         begin
           with_timeout(timeout) {
             app.call(request_env).on_complete do |response_env|
@@ -136,7 +136,7 @@ module FaradayThrottler
     attr_reader :app, :lock, :cache, :lock_key_resolver, :cache_key_resolver, :rate, :wait, :timeout, :fallbacks, :gauge
 
     def serve_from_cache_or_fallback(request_env, cache_key, start)
-      if cached_response = cache.get(cache_key, gauge.wait)
+      if cached_response = cache.get(cache_key, gauge.wait(cache_key))
         gauge.finish cache_key, :cached
         resp cached_response, :cached, start
       else
