@@ -79,7 +79,7 @@ redis = Redis.new('my-redis-server.com:1234')
 redis_lock = FaradayThrottler::RedisLock.new(redis)
 
 # Cache entries will be available for 1 hour
-redis_lock = FaradayThrottler::RedisCache.new(redis: redis, ttl: 3600)
+redis_cache = FaradayThrottler::RedisCache.new(redis: redis, ttl: 3600)
 
 client = Faraday.new(:url => 'https://my.api.com') do |c|
  c.use(
