@@ -74,7 +74,7 @@ require 'redis'
 require 'faraday_throttler/redis_lock'
 require 'faraday_throttler/redis_cache'
 
-redis = Redis.new('my-redis-server.com:1234')
+redis = Redis.new(uri: 'redis://my-redis-server.com:1234')
 
 redis_lock = FaradayThrottler::RedisLock.new(redis)
 
