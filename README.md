@@ -8,6 +8,10 @@ Configurable Faraday middleware for Ruby HTTP clients that:
 * does its best to return cached or placeholder responses to clients while backend service is unavailable or slow.
 * optionally uses Redis to rate-limit outgoing requests across processes and servers.
 
+## Use case
+
+Use this gem if you want to help avoid request [stampedes](https://en.wikipedia.org/wiki/Cache_stampede) to your backend APIs. For example after front-end cache expiration. This middleware can help you limit the number and rate of concurrent requests to the backend, while serving useful cached or hard-coded responses back to the client when the backend is not inmediatly available.
+
 ## Installation
 
 Add this line to your application's Gemfile:
