@@ -28,7 +28,7 @@ Or install it yourself as:
 
 ### Defaults
 
-The defaul configuration use an in-memory lock and in-memory cache. Not suitable for multi-server deployments.
+The defaul configuration uses an in-memory lock and in-memory cache. Not suitable for multi-server deployments.
 
 ```ruby
 require 'faraday'
