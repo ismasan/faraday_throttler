@@ -80,7 +80,16 @@ module FaradayThrottler
         #
         # `request_id` is the result of cache_key_resolver#call, normally an MD5 hash of the request full URL.
         # `state` can be one of :fresh, :cached, :timeout, :fallback
-        gauge: nil
+        gauge: nil,
+
+        # If async is TRUE, sending the request and populating the cache from the response
+        # will happen asynchronously in a thread, while the main thread will
+        # poll the cache for the duration of the :wait period.
+        # If the cache is populated within that period, the newly cached response will be returned
+        # Otherwise the fallback response will be returned.
+        # The main difference is that, when async: false, a fresh request will block until it gets data from the server.
+        # When async: true, a fresh request will try to respond with (possibly stale) cached data ASAP while the new response is cached in the background.
+        async: false
     )
 
       validate_dep! lock, :lock, :set
@@ -98,7 +107,7 @@ module FaradayThrottler
       @timeout = timeout.to_i
       @fallbacks = fallbacks
       @gauge = gauge || Gauge.new(rate: @rate, wait: @wait)
-
+      @async = async
       validate_dep! @gauge, :gauge, :start, :update, :finish
 
       super app
@@ -115,17 +124,10 @@ module FaradayThrottler
       gauge.start cache_key, start
 
       if lock.set(lock_key, gauge.rate(cache_key))
-        begin
-          with_timeout(timeout) {
-            app.call(request_env).on_complete do |response_env|
-              cache.set cache_key, response_env
-              gauge.finish cache_key, :fresh
-              debug_headers response_env, :fresh, start
-            end
-          }
-        rescue ::Timeout::Error => e
-          gauge.update cache_key, :timeout
-          serve_from_cache_or_fallback request_env, cache_key, start
+        if async?
+          handle_async(request_env, cache_key, start)
+        else
+          handle_sync(request_env, cache_key, start)
         end
       else
         serve_from_cache_or_fallback request_env, cache_key, start
@@ -134,6 +136,34 @@ module FaradayThrottler
 
     private
     attr_reader :app, :lock, :cache, :lock_key_resolver, :cache_key_resolver, :rate, :wait, :timeout, :fallbacks, :gauge
+
+    def async?
+      @async
+    end
+
+    def handle_sync(request_env, cache_key, start)
+      with_timeout(timeout) {
+        fetch_and_cache(request_env, cache_key, start)
+      }
+    rescue ::Timeout::Error => e
+      gauge.update cache_key, :timeout
+      serve_from_cache_or_fallback request_env, cache_key, start
+    end
+
+    def handle_async(request_env, cache_key, start)
+      Thread.new do
+        fetch_and_cache(request_env, cache_key, start)
+      end
+      serve_from_cache_or_fallback request_env, cache_key, start
+    end
+
+    def fetch_and_cache(request_env, cache_key, start)
+      app.call(request_env).on_complete do |response_env|
+        cache.set cache_key, response_env
+        gauge.finish cache_key, :fresh
+        debug_headers response_env, :fresh, start
+      end
+    end
 
     def serve_from_cache_or_fallback(request_env, cache_key, start)
       if cached_response = cache.get(cache_key, gauge.wait(cache_key))
