@@ -166,6 +166,34 @@ describe FaradayThrottler::Middleware do
     end
   end
 
+  context 'no in-flight request, cached response' do
+    before do
+      allow(cache).to receive(:get).with(key, 4).and_return cached_response
+    end
+
+    context 'asynchronous' do
+      let(:async_fetch) { true }
+      before do
+        allow(Thread).to receive(:new) do |&blk|
+          blk.call
+        end
+      end
+
+      it 'sets backend response in the cache' do
+        expect(cache).to receive(:set) do |k, resp|
+          expect(k).to eq key
+          expect(resp.body).to eq 'response body'
+        end
+        conn.get(url)
+      end
+
+      it 'responds with cached response' do
+        resp = conn.get(url)
+        expect(resp.body).to eql 'previous response body'
+      end
+    end
+  end
+
   context 'previous in-flight request' do
 
     before do
