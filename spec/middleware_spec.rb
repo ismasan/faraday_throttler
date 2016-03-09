@@ -21,7 +21,7 @@ describe FaradayThrottler::Middleware do
   let(:timeout) { 0 }
 
   let(:key) { key_resolver.call(url: url) }
-
+  let(:async_fetch) { false }
   let(:conn) do
     Faraday.new do |conn|
       conn.use(described_class, {
@@ -33,7 +33,8 @@ describe FaradayThrottler::Middleware do
         wait: 4,
         timeout: timeout,
         fallbacks: fallbacks,
-        gauge: gauge
+        gauge: gauge,
+        async: async_fetch
       })
 
       conn.adapter :test, request_stubs
@@ -119,25 +120,77 @@ describe FaradayThrottler::Middleware do
   end
 
   context 'fresh request (no cache, no in-flight request)' do
-
-    it 'requests backend and responds with fresh data' do
-      resp = conn.get(url)
-      expect(resp.body).to eql 'response body'
-    end
-
-    it 'sets lock' do
-      expect(lock).to receive(:set).with(key, 3)
-      conn.get(url)
-    end
-
-    it 'populates cache' do
-      expect(cache).to receive(:set) do |k, resp|
-        expect(k).to eql key
-        expect(resp).to be_a Faraday::Env
-        expect(resp[:body]).to eql 'response body'
+    context 'synchronous' do
+      it 'requests backend and responds with fresh data' do
+        resp = conn.get(url)
+        expect(resp.body).to eql 'response body'
       end
 
-      conn.get(url)
+      it 'sets lock' do
+        expect(lock).to receive(:set).with(key, 3)
+        conn.get(url)
+      end
+
+      it 'populates cache' do
+        expect(cache).to receive(:set) do |k, resp|
+          expect(k).to eql key
+          expect(resp).to be_a Faraday::Env
+          expect(resp[:body]).to eql 'response body'
+        end
+
+        conn.get(url)
+      end
+    end
+
+    context 'asynchronous' do
+      let(:async_fetch) { true }
+      before do
+        allow(cache).to receive(:get).and_return nil
+        allow(Thread).to receive(:new) do |&blk|
+          blk.call
+        end
+      end
+
+      it 'sets backend response in the cache' do
+        expect(cache).to receive(:set) do |k, resp|
+          expect(k).to eq key
+          expect(resp.body).to eq 'response body'
+        end
+        conn.get(url)
+      end
+
+      it 'responds with fallback response' do
+        resp = conn.get(url)
+        expect(resp.body).to eql 'No content yet'
+      end
+    end
+  end
+
+  context 'no in-flight request, cached response' do
+    before do
+      allow(cache).to receive(:get).with(key, 4).and_return cached_response
+    end
+
+    context 'asynchronous' do
+      let(:async_fetch) { true }
+      before do
+        allow(Thread).to receive(:new) do |&blk|
+          blk.call
+        end
+      end
+
+      it 'sets backend response in the cache' do
+        expect(cache).to receive(:set) do |k, resp|
+          expect(k).to eq key
+          expect(resp.body).to eq 'response body'
+        end
+        conn.get(url)
+      end
+
+      it 'responds with cached response' do
+        resp = conn.get(url)
+        expect(resp.body).to eql 'previous response body'
+      end
     end
   end
 
