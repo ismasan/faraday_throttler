@@ -18,6 +18,7 @@ describe FaradayThrottler::Middleware do
   let(:key_resolver) { FaradayThrottler::KeyResolver.new }
   let(:fallbacks) { double('fallbacks', call: fallback_response) }
   let(:gauge) { nil }
+  let(:logger) { double('Logger', debug: true, info: true, error: true, warn: true) }
   let(:timeout) { 0 }
 
   let(:key) { key_resolver.call(url: url) }
@@ -34,7 +35,8 @@ describe FaradayThrottler::Middleware do
         timeout: timeout,
         fallbacks: fallbacks,
         gauge: gauge,
-        async: async_fetch
+        async: async_fetch,
+        logger: logger
       })
 
       conn.adapter :test, request_stubs
@@ -74,6 +76,14 @@ describe FaradayThrottler::Middleware do
       it 'complains' do
         expect{
           described_class.new(app, lock: double('lock'))
+        }.to raise_error(ArgumentError)
+      end
+    end
+
+    describe 'invalid logger' do
+      it 'complains' do
+        expect{
+          described_class.new(app, logger: double('logger'))
         }.to raise_error(ArgumentError)
       end
     end

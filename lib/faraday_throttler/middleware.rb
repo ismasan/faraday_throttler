@@ -1,5 +1,6 @@
 require 'timeout'
 require 'faraday'
+require 'logger'
 require 'faraday_throttler/key_resolver'
 require 'faraday_throttler/mem_lock'
 require 'faraday_throttler/cache'
@@ -89,7 +90,9 @@ module FaradayThrottler
         # Otherwise the fallback response will be returned.
         # The main difference is that, when async: false, a fresh request will block until it gets data from the server.
         # When async: true, a fresh request will try to respond with (possibly stale) cached data ASAP while the new response is cached in the background.
-        async: false
+        async: false,
+
+        logger: Logger.new(STDOUT)
     )
 
       validate_dep! lock, :lock, :set
@@ -97,6 +100,7 @@ module FaradayThrottler
       validate_dep! lock_key_resolver, :lock_key_resolver, :call
       validate_dep! cache_key_resolver, :cache_key_resolver, :call
       validate_dep! fallbacks, :fallbacks, :call
+      validate_dep! logger, :info, :error, :warn, :debug
 
       @lock = lock
       @cache = cache
@@ -108,6 +112,7 @@ module FaradayThrottler
       @fallbacks = fallbacks
       @gauge = gauge || Gauge.new(rate: @rate, wait: @wait)
       @async = async
+      @logger = logger
       validate_dep! @gauge, :gauge, :start, :update, :finish
 
       super app
@@ -124,28 +129,32 @@ module FaradayThrottler
       gauge.start cache_key, start
 
       if lock.set(lock_key, gauge.rate(cache_key))
+        logger.debug logline(cache_key, "A.1. start backend request. async: #{async?}")
         if async?
           handle_async(request_env, cache_key, start)
         else
           handle_sync(request_env, cache_key, start)
         end
       else
+        logger.debug logline(cache_key, "A.2. lock already set. Wait for cache.")
         serve_from_cache_or_fallback request_env, cache_key, start
       end
     end
 
     private
-    attr_reader :app, :lock, :cache, :lock_key_resolver, :cache_key_resolver, :rate, :wait, :timeout, :fallbacks, :gauge
+    attr_reader :app, :lock, :cache, :lock_key_resolver, :cache_key_resolver, :rate, :wait, :timeout, :fallbacks, :gauge, :logger
 
     def async?
       @async
     end
 
     def handle_sync(request_env, cache_key, start)
+      logger.debug logline(cache_key, "B.1.1. handle sync. Timeout: #{timeout}")
       with_timeout(timeout) {
         fetch_and_cache(request_env, cache_key, start)
       }
     rescue ::Timeout::Error => e
+      logger.error logline(cache_key, "B.1.2. timeout error. Timeout: #{timeout}. Message: #{e.message}")
       gauge.update cache_key, :timeout
       serve_from_cache_or_fallback request_env, cache_key, start
     end
@@ -153,6 +162,7 @@ module FaradayThrottler
     def handle_async(request_env, cache_key, start)
       Thread.new do
         fetch_and_cache(request_env, cache_key, start)
+        logger.debug logline(cache_key, "B.2.1. finished async fetch and cache")
       end
       serve_from_cache_or_fallback request_env, cache_key, start
     end
@@ -161,15 +171,18 @@ module FaradayThrottler
       app.call(request_env).on_complete do |response_env|
         cache.set cache_key, response_env
         gauge.finish cache_key, :fresh
+        logger.debug logline(cache_key, "C.1.1. finished fetch and cache. Took #{Time.now - start}")
         debug_headers response_env, :fresh, start
       end
     end
 
     def serve_from_cache_or_fallback(request_env, cache_key, start)
       if cached_response = cache.get(cache_key, gauge.wait(cache_key))
+        logger.debug logline(cache_key, "C.2.1. serving cached response. Took #{Time.now - start}")
         gauge.finish cache_key, :cached
         resp cached_response, :cached, start
       else
+        logger.debug logline(cache_key, "C.2.2. no cached response. Serving fallback response")
         gauge.finish cache_key, :fallback
         resp fallbacks.call(request_env), :fallback, start
       end
@@ -200,6 +213,10 @@ module FaradayThrottler
       else
         ::Timeout.timeout(seconds, &block)
       end
+    end
+
+    def logline(cache_key, line)
+      "[Throttler:#{cache_key}] #{line}"
     end
   end
 
