@@ -92,6 +92,15 @@ module FaradayThrottler
         # When async: true, a fresh request will try to respond with (possibly stale) cached data ASAP while the new response is cached in the background.
         async: false,
 
+        # Pass your own Logger instance (for example Rails.logger in a Rails app).
+        # Defaults to STDOUT.
+        # http://ruby-doc.org/stdlib-2.1.0/libdoc/logger/rdoc/Logger.html
+        # Interface:
+        #   #debug(msg String, &block)
+        #   #warn(msg String, &block)
+        #   #error(msg String, &block)
+        #   #info(msg String, &block)
+        #   #fatal(msg String, &block)
         logger: Logger.new(STDOUT)
     )
 
