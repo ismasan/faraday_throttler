@@ -1,5 +1,3 @@
-[ ![Codeship Status for ismasan/faraday_throttler](https://codeship.com/projects/40d401a0-5c01-0133-561a-22b0ee77d2e6/status?branch=master)](https://codeship.com/projects/110895)
-
 # FaradayThrottler
 
 Configurable Faraday middleware for Ruby HTTP clients that:
